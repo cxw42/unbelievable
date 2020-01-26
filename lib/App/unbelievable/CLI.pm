@@ -1,9 +1,7 @@
 package App::unbelievable::CLI;
 
-use 5.010001;
-use strict;
-use warnings;
-use autodie ':all';
+use App::unbelievable::Util;
+use Cwd;
 
 # Runner: used by script/unbelievable
 
@@ -84,17 +82,51 @@ sub cmd_new {
 
 sub cmd_build {
     my ($res, $opts) = @_;
-    require App::Wallflower;
     say "Build site";
+    require App::Wallflower;
+    require Config;
+    require File::Find::Rule;
+    require File::Temp;
 
     # TODO get CPU count per
     # https://gist.github.com/aras-p/47e2252d6b1fa57d3619fd8e021690ec
 
-    # TODO
-    # - get all routes from app
+    # List the routes
+    # TODO get all GET routes from app
     # - include all files in public/ and content/.
-    return App::Wallflower->new_with_options( [ #TODO
-        ] )->run // 0;
+    my @routes;
+    push @routes, File::Find::Rule->readable->file->relative
+                    ->in(_here('content'));
+    s{\.[^\.]+$}{} foreach @routes;      # Routes in content/ don't have extensions
+    push @routes, File::Find::Rule->readable->file->relative
+                    ->in(_here('public'));
+    s{^([^/])}{/$1} foreach @routes;
+    push @routes, '/';
+    _diag("Routes:\n", join("\n", @routes));
+
+    # Export the routes where wallflower can find them
+    my $fh = File::Temp->new();
+    say {$fh} join("\n", @routes);
+    close $fh;  # TODO does this work?
+
+    my $destdir = _here('_output');
+    do { no autodie; mkdir $destdir };
+    my $wallflower_opts = [
+        ( '--verbose' )x!! $VERBOSE,
+        '--application' => _here('bin/app.psgi'),
+        '--destination' => $destdir,
+        '--INC' => join($Config::Config{path_sep}, @INC),
+        '--files',  # Flag
+        "$fh",      # Stringifies to the filename
+    ];
+    _diag("Wallflower options:\n", Dumper($wallflower_opts));
+    my $builder = App::Wallflower->new_with_options($wallflower_opts);
+    return $builder->run // 0;
 } #cmd_build()
+
+# Return the path of a directory under cwd
+sub _here {
+    return File::Spec->rel2abs(File::Spec->catpath(getcwd, @_));
+}
 
 1;

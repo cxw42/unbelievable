@@ -1,4 +1,5 @@
 #!/usr/bin/env perl
+use strict; use warnings;
 use App::unbelievable(); our $VERSION = $App::unbelievable::VERSION;
 use App::unbelievable::CLI;
 exit App::unbelievable::CLI::run(\@ARGV);

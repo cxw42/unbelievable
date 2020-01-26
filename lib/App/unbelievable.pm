@@ -8,13 +8,9 @@ App::unbelievable - Yet another site generator (can you believe it?)
 
 =cut
 
-use 5.010001;   # For say(), stacked file tests
-use strict;
-use warnings;
-use autodie ':all';
+use version 0.77; our $VERSION = version->declare('v0.0.1');
 
-use Data::Dumper;
-BEGIN { $Data::Dumper::Indent = 1; }
+use App::unbelievable::Util;
 
 use File::Slurp;
 use File::Spec;
@@ -22,10 +18,6 @@ use JSON;
 use Text::FrontMatter::YAML;
 use Text::MultiMarkdown 'markdown';     # TODO someday - Text::Markup
     # But see https://github.com/theory/text-markup/issues/20
-
-use version 0.77; our $VERSION = version->declare('v0.0.1');
-
-use vars::i '$VERBOSE' => 1;    # DEBUG
 
 # Imports: used by Dancer2 code {{{1
 use parent 'Exporter';
@@ -88,8 +80,8 @@ sub _produce_output {
                     my $result = $templater->(
                         File::Spec->catfile('shortcodes', $code),
                         { map {; "_$_" => $args[$_]} 0..$#args },
-                        { layout => undef} );
-                    $result =~ s{^\s+|\s+$}{}g;
+                        { layout => undef } );
+                    $result =~ s{^\s+|\s+$}{}g;     # trim
                     $result;
                 ]exg;
 
@@ -218,12 +210,6 @@ $contents
 EOT
 } #_line_mark_string()
 
-# Lazy Carp::croak
-sub _croak {
-    require Carp;
-    goto &Carp::croak;
-}
-
 # Escape in single quotes
 sub _sqescape {
     my $str = shift;
@@ -280,13 +266,6 @@ sub _load {
 
     return ({}, $text);
 } #_load()
-
-# _diag: lazy Test::More::diag(), conditioned on $VERBOSE.
-sub _diag {
-    return unless $VERBOSE;
-    require Test::More;     # for diag()
-    goto &Test::More::diag;
-}
 
 1;
 __END__
