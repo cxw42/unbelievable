@@ -51,7 +51,7 @@ sub import {
 #       - {send_file => $filename}: a filename to send_file
 #       - {template => [...]}: args for template().
 sub _produce_output {
-    my ($public_dir, $content_dir, $request, $lrTags) = @_;
+    my ($public_dir, $content_dir, $request, $templater, $lrTags) = @_;
     my $path = join('/', @$lrTags);
     _diag("Processing file ", $path);
 
@@ -79,12 +79,24 @@ sub _produce_output {
     _diag("Got frontmatter\n", Dumper $frontmatter);
     _diag("Got contents:\n$markdown");
 
-    # TODO shortcodes
+    # shortcodes.  TODO other than single-arg, and clean this up!
+    $markdown =~ s[\{\{<\s*(?<code>\w+)\s+(?<arg0>\S+)\s*>\}\}]
+                [   my $code = $+{code};
+                    my @args = ($+{arg0});
+                    _diag("Shortcode $code", @args);
+                    $_ =~ s{\A(['"])(.+)\1\z}{$2} foreach @args;    # de-quote
+                    my $result = $templater->(
+                        File::Spec->catfile('shortcodes', $code),
+                        { map {; "_$_" => $args[$_]} 0..$#args },
+                        { layout => undef} );
+                    $result =~ s{^\s+|\s+$}{}g;
+                    $result;
+                ]exg;
 
     my $html = markdown($markdown, {base_url => $request->uri_base});
     _diag("Generated HTML:\n$html");
 
-    return { template => ['raw', {htmlsource => $html}] };
+    return { template => ['raw', {%$frontmatter, htmlsource => $html}] };
 } #_produce_output
 
 # Make default routes.  Usage: unbelievable();
@@ -133,7 +145,8 @@ EOT
     # _produce_output.
     sub _do_file {
         my $content =
-            App::unbelievable::_produce_output($PUBLIC, $CONTENT, request, shift);
+            App::unbelievable::_produce_output($PUBLIC, $CONTENT, request,
+                sub { template @_ }, shift);
         pass unless $content;
         send_file $content->{send_file} if $content->{send_file};
         return template @{$content->{template}} if $content->{template};
@@ -235,9 +248,21 @@ sub _load {
     my $text = read_file($fn);
     my ($frontmatter, $markdown);
     my @errors;
+    my $reader;
+
+    # Look for JSON frontmatter without separators (Hugo-style).
+    my $charcount;
+    eval {
+        $reader = JSON->new;
+        ($frontmatter, $charcount) = $reader->decode_prefix($text);
+        $markdown = substr $text, $charcount//0;
+    };
+    push @errors, "Could not read JSON: $@" if $@;
+    push @errors, "No JSON found" unless $charcount;
+
+    return ($frontmatter, $markdown) unless(@errors);
 
     # Mainline case: YAML frontmatter with `---` separators
-    my $reader;
     eval {
         $reader = Text::FrontMatter::YAML->new(
             document_string => $text
@@ -248,17 +273,6 @@ sub _load {
     push @errors, "Could not read YAML-frontmatter document: $@" if $@;
 
     return ($frontmatter, $markdown) unless @errors;
-
-    # That didn't work.  Look for JSON frontmatter without separators.
-    eval {
-        my $charcount;
-        $reader = JSON->new;
-        ($frontmatter, $charcount) = $reader->decode_prefix($text);
-        $markdown = substr $text, $charcount//0;
-    };
-    push @errors, "Could not read JSON: $@" if $@;
-
-    return ($frontmatter, $markdown) unless(@errors);
 
     # Default: assume the full contents are markdown, and there is
     # no frontmatter.
