@@ -3,24 +3,120 @@ use 5.010001;
 use strict;
 use warnings;
 
-use Data::Dumper::Compact qw(ddc);
-use Getopt::Long::Subcommand;
-use Import::Into;
-use Pod::Usage;
+use Data::Dumper;
+BEGIN { $Data::Dumper::Indent = 1; }
+
+use File::Slurp;
+use File::Spec;
 
 use version 0.77; our $VERSION = version->declare('v0.0.1');
 
 # Imports: used by Dancer2 code {{{1
+use parent 'Exporter';
+our @EXPORT;
+BEGIN { @EXPORT = qw(unbelievable); }
 
+my $APPNAME;
+
+sub import {
+    say "Loading ", __PACKAGE__;
+    __PACKAGE__->export_to_level(1, @_);
+
+    require Import::Into;
+    require feature;
+    require Dancer2;
+    my $target = $APPNAME = caller;
+    $_->import::into($target) foreach qw(Dancer2 strict warnings);
+    feature->import::into($target, ':5.10');
+
+} #import()
+
+# Process a markdown file into HTML.
+sub _markdown_processor {
+    die "TODO processing file ", shift;
+} #_markdown_processor
+
+# Make default routes.  Usage: unbelievable();
+sub unbelievable {
+    say "unbelievable ", __PACKAGE__;
+
+    require Dancer2;
+    require Dancer2::Core::Route;
+
+    # TODO find a less hackish way to get the app and DSL.
+    my ($app) = grep { $_->name eq caller } @{Dancer2->runner->apps};
+    die "Could not find Dancer2 application" unless $app;
+
+    my $dsl = do { no strict 'refs'; &{ caller . '::dsl' } };
+    die "Could not find Dancer2 DSL" unless $dsl;
+
+    # Find the public dir and the content dir
+    my $public_dir = $dsl->setting('public_dir') or die "No public_dir set";
+    $public_dir = File::Spec->rel2abs($public_dir)
+        unless File::Spec->file_name_is_absolute($public_dir);
+    my ($vol, $dirs, $file) = File::Spec->splitpath($public_dir);
+    my $content_dir = File::Spec->catpath($vol, $dirs, 'content');
+
+    say "public_dir $public_dir";
+    say "content_dir $content_dir";
+
+    # Create default / route
+    my $route = Dancer2::Core::Route->new(
+        method => 'get', regexp => '/', code => sub {} );
+    unless($app->route_exists($route)) {
+        say "Adding GET / route";
+        my $index_file;
+        my @candidates;
+        push @candidates, File::Spec->catfile($content_dir, 'index.md');
+        push @candidates, File::Spec->catfile($public_dir, 'index.html');
+
+        foreach my $candidate (@candidates) {
+            next unless -r $candidate;
+            $index_file = $candidate;
+            last;
+        }
+
+        die "No index file (tried " . join(' ', @candidates) . ')'
+            unless $index_file;
+
+        if($index_file =~ /\.html?$/) {
+            $dsl->get('/', sub {
+                return read_file($index_file);
+            });
+        } else {
+            $dsl->get('/', sub {
+                return _markdown_processor($index_file);
+            });
+        }
+
+    } #endif need to add GET / route
+
+    # Add megasplat route for everything in /content
+    say "Adding GET /** route";
+    #my $get = do { no strict 'refs'; \&{ caller . '::get' } };
+    $dsl->get('/**', sub {
+        #say "megasplat:\n", Dumper \@_;
+        # TODO find out why the megasplat tags aren't getting passed properly
+        # into this function.  The following is an ugly hack.
+        my $tags = $dsl->request->{_params}->{splat}->[0];
+        #say "megasplat tags:\n", Dumper $tags;
+
+        _markdown_processor(File::Spec->catfile($content_dir, @$tags));
+    });
+
+    return 1;   # So the unbelievable() call can be the last thing in the file
+} #unbelievable()
 
 # }}}1
 # Runner: used by script/unbelievable {{{1
 
 sub run {
+    require Getopt::Long::Subcommand;
+    require Pod::Usage;
     my $args = shift or die "No args";
     local @ARGV = @$args;
     my %opts;
-    my $res = GetOptions(
+    my $res = Getopt::Long::Subcommand::GetOptions(
         summary => 'Build a static site',
         default_subcommand => 'help',
 
@@ -69,13 +165,13 @@ sub run {
         }, # subcommands
     );
 
-    say "Got options:\n", ddc($res), ddc(\%opts) if $opts{verbose};
+    say "Got options:\n", Dumper($res), Dumper(\%opts) if $opts{verbose};
 
-    pod2usage() unless $res->{success};
-    pod2usage(-verbose => 1, -exitval => 0) if $opts{help};
-    pod2usage(-verbose => 1, -exitval => 0)
+    Pod::Usage::pod2usage() unless $res->{success};
+    Pod::Usage::pod2usage(-verbose => 1, -exitval => 0) if $opts{help};
+    Pod::Usage::pod2usage(-verbose => 1, -exitval => 0)
         if $res->{success} && $res->{subcommand}->[0] eq 'help';
-    pod2usage(-verbose => 2, -exitval => 0) if $opts{man};
+    Pod::Usage::pod2usage(-verbose => 2, -exitval => 0) if $opts{man};
 
     my $cmdname = 'cmd_' . join '_', @{$res->{subcommand}};
     my $fn = __PACKAGE__->can($cmdname)
@@ -91,8 +187,17 @@ sub cmd_new {
 
 sub cmd_build {
     my ($res, $opts) = @_;
+    require App::Wallflower;
     say "Build site";
-    return 0;
+
+    # TODO get CPU count per
+    # https://gist.github.com/aras-p/47e2252d6b1fa57d3619fd8e021690ec
+
+    # TODO
+    # - get all routes from app
+    # - include all files in public/ and content/.
+    return App::Wallflower->new_with_options( [ #TODO
+        ] )->run // 0;
 } #new()
 
 # }}}1
@@ -115,6 +220,7 @@ App::unbelievable - Yet another site generator (can you believe it?)
 =head1 DESCRIPTION
 
 App::unbelievable makes a Dancer2 application into a static site generator.
+Inputs are in C<content/>.  Output goes to C<_built/>.
 
 =head1 THANKS
 
