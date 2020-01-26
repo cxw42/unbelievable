@@ -4,4 +4,4 @@ authority="cpan:CXW"
 
 module_maker="ModuleBuildTiny"
 static_install = "auto"
-
+tag_format = "v%v"

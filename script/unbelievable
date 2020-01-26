@@ -1,0 +1,38 @@
+#!/usr/bin/env perl
+use App::unbelievable(); our $VERSION = $App::unbelievable::VERSION;
+exit App::unbelievable::run(\@ARGV);
+__END__
+
+=encoding utf-8
+
+=head1 NAME
+
+unbelievable - Yet another site generator (can you believe it?)
+
+=head1 SYNOPSIS
+
+    unbelievable new <sitename>
+    cd <sitename>
+    unbelievable build
+
+Say C<unbelievable --man> for full documentation.  Available subcommands
+are C<new>, C<build>, and C<help>.
+
+=head1 DESCRIPTION
+
+unbelievable makes static sites using L<Dancer2> and L<wallflower>.
+
+=head1 LICENSE
+
+Copyright (C) 2020 Chris White.
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Chris White E<lt>cxwembedded@gmail.comE<gt>
+
+=cut
+
+# vi: set fdm=marker: #
