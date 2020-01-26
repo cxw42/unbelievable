@@ -1,53 +1,100 @@
 package App::unbelievable;
-use 5.010001;
+
+=encoding utf-8
+
+=head1 NAME
+
+App::unbelievable - Yet another site generator (can you believe it?)
+
+=cut
+
+use 5.010001;   # For say(), stacked file tests
 use strict;
 use warnings;
+use autodie ':all';
 
 use Data::Dumper;
 BEGIN { $Data::Dumper::Indent = 1; }
 
 use File::Slurp;
 use File::Spec;
+use JSON;
+use Text::FrontMatter::YAML;
+use Text::MultiMarkdown 'markdown';     # TODO someday - Text::Markup
+    # But see https://github.com/theory/text-markup/issues/20
 
 use version 0.77; our $VERSION = version->declare('v0.0.1');
 
+use vars::i '$VERBOSE' => 1;    # DEBUG
+
 # Imports: used by Dancer2 code {{{1
 use parent 'Exporter';
-our @EXPORT;
-BEGIN { @EXPORT = qw(unbelievable); }
-
-my $APPNAME;
+use vars::i '@EXPORT' => [qw(unbelievable)];
 
 sub import {
-    say "Loading ", __PACKAGE__;
+    my $target = caller;
+    say 'Loading ', __PACKAGE__, ' into ', $target;
     __PACKAGE__->export_to_level(1, @_);
 
     require Import::Into;
     require feature;
     require Dancer2;
-    my $target = $APPNAME = caller;
     $_->import::into($target) foreach qw(Dancer2 strict warnings);
     feature->import::into($target, ':5.10');
 
 } #import()
 
-# Process a markdown file into HTML.
-sub _markdown_processor {
-    die "TODO processing file ", shift;
-} #_markdown_processor
+# Produce a file, e.g., by processing a markdown file into HTML.
+# Returns:
+#   - falsy: pass
+#   - hashref:
+#       - {send_file => $filename}: a filename to send_file
+#       - {template => [...]}: args for template().
+sub _produce_output {
+    my ($public_dir, $content_dir, $request, $lrTags) = @_;
+    my $path = join('/', @$lrTags);
+    _diag("Processing file ", $path);
+
+    my $fn;             # File we are going to read from
+    my @candidates;     # Where we might find it
+
+    push @candidates, File::Spec->catfile($content_dir, _suffix('.md', @$lrTags));
+    push @candidates, File::Spec->catfile($public_dir, _suffix('.html', @$lrTags));
+    push @candidates, File::Spec->catfile($public_dir, _suffix('.htm', @$lrTags));
+
+    foreach my $candidate (@candidates) {
+        next unless -f -r $candidate;
+        $fn = $candidate;
+        last;
+    }
+
+    die "Could not find file for $path (tried @{[join(' ', @candidates)]})"
+        unless $fn;
+
+    return {send_file => $fn} if $fn =~ /\.html?$/;
+
+    # Process a Markdown file
+    my @retval = ('index');     # Name of the template
+    my ($frontmatter, $markdown) = _load($fn);
+    _diag("Got frontmatter\n", Dumper $frontmatter);
+    _diag("Got contents:\n$markdown");
+
+    # TODO shortcodes
+
+    my $html = markdown($markdown, {base_url => $request->uri_base});
+    _diag("Generated HTML:\n$html");
+
+    return { template => ['raw', {htmlsource => $html}] };
+} #_produce_output
 
 # Make default routes.  Usage: unbelievable();
 sub unbelievable {
-    say "unbelievable ", __PACKAGE__;
+    my $appname = caller or die "No caller!";
+    say 'unbelievable ', __PACKAGE__, ' in ', $appname;
 
     require Dancer2;
-    require Dancer2::Core::Route;
 
-    # TODO find a less hackish way to get the app and DSL.
-    my ($app) = grep { $_->name eq caller } @{Dancer2->runner->apps};
-    die "Could not find Dancer2 application" unless $app;
-
-    my $dsl = do { no strict 'refs'; &{ caller . '::dsl' } };
+    my $dsl = do { no strict 'refs'; &{ $appname . '::dsl' } };
     die "Could not find Dancer2 DSL" unless $dsl;
 
     # Find the public dir and the content dir
@@ -60,156 +107,175 @@ sub unbelievable {
     say "public_dir $public_dir";
     say "content_dir $content_dir";
 
-    # Create default / route
-    my $route = Dancer2::Core::Route->new(
-        method => 'get', regexp => '/', code => sub {} );
-    unless($app->route_exists($route)) {
-        say "Adding GET / route";
-        my $index_file;
-        my @candidates;
-        push @candidates, File::Spec->catfile($content_dir, 'index.md');
-        push @candidates, File::Spec->catfile($public_dir, 'index.html');
+    # Create default routes.  The caller must invoke this function
+    # after defining any other routes, so these will only be used
+    # as fallbacks.
+    my $text = _line_mark_string(<<EOT);
+    package App::unbelievable::Routes;
+    use 5.010001;
+    use strict;
+    use warnings;
+    use vars::i {
+        '\$APPNAME' => @{[_sqescape($appname)]},
+        '\$PUBLIC' =>@{[_sqescape($public_dir)]},
+        '\$CONTENT' => @{[_sqescape($content_dir)]},
+    };
+EOT
 
-        foreach my $candidate (@candidates) {
-            next unless -r $candidate;
-            $index_file = $candidate;
-            last;
-        }
+    $text .= _line_mark_string(<<'EOTSQ');
+    use Data::Dumper;
+    use Dancer2 appname => $APPNAME;
 
-        die "No index file (tried " . join(' ', @candidates) . ')'
-            unless $index_file;
+    say 'Loading routes into ', $APPNAME;
 
-        if($index_file =~ /\.html?$/) {
-            $dsl->get('/', sub {
-                return read_file($index_file);
-            });
-        } else {
-            $dsl->get('/', sub {
-                return _markdown_processor($index_file);
-            });
-        }
+    # Call our _produce_output, above, and take the appropriate action.
+    # This way we don't have to try to directly invoke Dancer2 DSL in
+    # _produce_output.
+    sub _do_file {
+        my $content =
+            App::unbelievable::_produce_output($PUBLIC, $CONTENT, request, shift);
+        pass unless $content;
+        send_file $content->{send_file} if $content->{send_file};
+        return template @{$content->{template}} if $content->{template};
+        die "Assertion failure: I don't know how to handle that file.\n" .
+            Dumper $content;
+    }
 
-    } #endif need to add GET / route
+    get '/' => sub { _do_file(['index']) };
+    # Note: we never get here on requests for static files --- those are
+    # handled by middleware before Dancer2 checks routes.  See
+    # Dancer2::Core::App::to_app().
+    get '/**' => sub { _do_file(splat) };
+EOTSQ
 
-    # Add megasplat route for everything in /content
-    say "Adding GET /** route";
-    #my $get = do { no strict 'refs'; \&{ caller . '::get' } };
-    $dsl->get('/**', sub {
-        #say "megasplat:\n", Dumper \@_;
-        # TODO find out why the megasplat tags aren't getting passed properly
-        # into this function.  The following is an ugly hack.
-        my $tags = $dsl->request->{_params}->{splat}->[0];
-        #say "megasplat tags:\n", Dumper $tags;
-
-        _markdown_processor(File::Spec->catfile($content_dir, @$tags));
-    });
+    eval $text;
+    die $@ if $@;
 
     return 1;   # So the unbelievable() call can be the last thing in the file
 } #unbelievable()
 
 # }}}1
-# Runner: used by script/unbelievable {{{1
+# Helper routines {{{1
+#
+=head2 _line_mark_string
 
-sub run {
-    require Getopt::Long::Subcommand;
-    require Pod::Usage;
-    my $args = shift or die "No args";
-    local @ARGV = @$args;
-    my %opts;
-    my $res = Getopt::Long::Subcommand::GetOptions(
-        summary => 'Build a static site',
-        default_subcommand => 'help',
+Add a C<#line> directive to a string.  Usage:
 
-        # common options recognized by all subcommands
-        options => {
-            'help|h|?|usage' => {
-                summary => 'Display help message',
-                handler => \$opts{help},
-                #handler => sub {
-                #    my ($cb, $val, $res) = @_;
-                #    if ($res->{subcommand}) {
-                #        say "Help message for $res->{subcommand} ...";
-                #    } else {
-                #        say "General help message ...";
-                #    }
-                #    exit 0;
-                #},
-            },
-            'man' => {
-                summary => 'Display full docs',
-                handler => \$opts{man},
-            },
-            'version|V' => {
-                summary => 'Display program version',
-                handler => sub {
-                    say "$0 version $main::VERSION";
-                    exit 0;
-                },
-            },
-            'verbose|v+' => {
-                handler => \$opts{verbose},
-            },
-        }, # options
+    my $str = _line_mark_string <<EOT ;
+    $contents
+    EOT
 
-        # subcommands
-        subcommands => {
-            new => {
-                summary => 'Create a new site',
-            },
-            build => {
-                summary => 'Build the static html',
-            },
-            help => {
-                summary => 'Show help',
-            },
-        }, # subcommands
-    );
+or
 
-    say "Got options:\n", Dumper($res), Dumper(\%opts) if $opts{verbose};
+    my $str = _line_mark_string __FILE__, __LINE__, <<EOT ;
+    $contents
+    EOT
 
-    Pod::Usage::pod2usage() unless $res->{success};
-    Pod::Usage::pod2usage(-verbose => 1, -exitval => 0) if $opts{help};
-    Pod::Usage::pod2usage(-verbose => 1, -exitval => 0)
-        if $res->{success} && $res->{subcommand}->[0] eq 'help';
-    Pod::Usage::pod2usage(-verbose => 2, -exitval => 0) if $opts{man};
+In the first form, information from C<caller> will be used for the filename
+and line number.
 
-    my $cmdname = 'cmd_' . join '_', @{$res->{subcommand}};
-    my $fn = __PACKAGE__->can($cmdname)
-        or die "I don't know subcommand $cmdname";
-    return $fn->($res, \%opts);
-} #run()
+The C<#line> directive will point to the line after the C<_line_mark_string>
+invocation, i.e., the first line of <C$contents>.  Generally, C<$contents> will
+be source code, although this is not required.
 
-sub cmd_new {
-    my ($res, $opts) = @_;
-    say "New site";
-    return 0;
-} #new()
+C<$contents> must be defined, but can be empty.
 
-sub cmd_build {
-    my ($res, $opts) = @_;
-    require App::Wallflower;
-    say "Build site";
+=cut
 
-    # TODO get CPU count per
-    # https://gist.github.com/aras-p/47e2252d6b1fa57d3619fd8e021690ec
+sub _line_mark_string {
+    my ($contents, $filename, $line);
+    if(@_ == 1) {
+        $contents = $_[0];
+        (undef, $filename, $line) = caller;
+    } elsif(@_ == 3) {
+        ($filename, $line, $contents) = @_;
+    } else {
+        _croak("Invalid invocation");
+    }
 
-    # TODO
-    # - get all routes from app
-    # - include all files in public/ and content/.
-    return App::Wallflower->new_with_options( [ #TODO
-        ] )->run // 0;
-} #new()
+    _croak("Need text") unless defined $contents;
+    die "Couldn't get location information" unless $filename && $line;
 
+    $filename =~ s/"/-/g;
+    ++$line;
+
+    return <<EOT;
+#line $line "$filename"
+$contents
+EOT
+} #_line_mark_string()
+
+# Lazy Carp::croak
+sub _croak {
+    require Carp;
+    goto &Carp::croak;
+}
+
+# Escape in single quotes
+sub _sqescape {
+    my $str = shift;
+    $str =~ s/'/\\'/g;
+    return "'$str'";
+}
 # }}}1
+
+# Add a suffix to the last component of a list.  No-op if the
+# list is empty.
+sub _suffix {
+    my $suffix = shift;
+    return () unless @_;
+    my $last = $_[$#_] . $suffix;
+    return @_[0..$#_-1], $last;
+}
+
+# Load a Markdown file, which may have front matter.
+# Returns an arrayref of YAML documents.
+sub _load {
+    my $fn = shift;
+    my $text = read_file($fn);
+    my ($frontmatter, $markdown);
+    my @errors;
+
+    # Mainline case: YAML frontmatter with `---` separators
+    my $reader;
+    eval {
+        $reader = Text::FrontMatter::YAML->new(
+            document_string => $text
+        );
+        $frontmatter = $reader->frontmatter_hashref;
+        $markdown = $reader->data_text // '';
+    };
+    push @errors, "Could not read YAML-frontmatter document: $@" if $@;
+
+    return ($frontmatter, $markdown) unless @errors;
+
+    # That didn't work.  Look for JSON frontmatter without separators.
+    eval {
+        my $charcount;
+        $reader = JSON->new;
+        ($frontmatter, $charcount) = $reader->decode_prefix($text);
+        $markdown = substr $text, $charcount//0;
+    };
+    push @errors, "Could not read JSON: $@" if $@;
+
+    return ($frontmatter, $markdown) unless(@errors);
+
+    # Default: assume the full contents are markdown, and there is
+    # no frontmatter.
+    say join "\n  ", "While loading $fn, got errors:", @errors if $VERBOSE;
+
+    return ({}, $text);
+} #_load()
+
+# _diag: lazy Test::More::diag(), conditioned on $VERBOSE.
+sub _diag {
+    return unless $VERBOSE;
+    require Test::More;     # for diag()
+    goto &Test::More::diag;
+}
 
 1;
 __END__
-
-=encoding utf-8
-
-=head1 NAME
-
-App::unbelievable - Yet another site generator (can you believe it?)
 
 =head1 SYNOPSIS
 

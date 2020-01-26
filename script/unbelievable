@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 use App::unbelievable(); our $VERSION = $App::unbelievable::VERSION;
-exit App::unbelievable::run(\@ARGV);
+use App::unbelievable::CLI;
+exit App::unbelievable::CLI::run(\@ARGV);
 __END__
 
 =encoding utf-8
