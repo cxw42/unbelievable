@@ -1,12 +1,29 @@
 package App::unbelievable;
 
+# Documentation {{{1
+
 =encoding utf-8
 
 =head1 NAME
 
 App::unbelievable - Yet another site generator (can you believe it?)
 
+=head1 SYNOPSIS
+
+    use App::unbelievable;  # Pulls in Dancer2
+    # your routes here
+    unbelievable;           # At EOF, fills in the rest of the routes.
+
+App::unbelievable makes a Dancer2 application into a static site generator.
+App::unbelievable adds routes for C</> and C</**> that will render Markdown
+files in C<content/>.  The L<unbelievable> script generates static HTML
+and other assets into C<_built/>.
+
+=head1 FUNCTIONS
+
 =cut
+
+# }}}1
 
 use version 0.77; our $VERSION = version->declare('v0.0.1');
 
@@ -19,9 +36,15 @@ use Text::FrontMatter::YAML;
 use Text::MultiMarkdown 'markdown';     # TODO someday - Text::Markup
     # But see https://github.com/theory/text-markup/issues/20
 
-# Imports: used by Dancer2 code {{{1
+# Routes to generate the HTML from Markdown (main logic) {{{1
 use parent 'Exporter';
 use vars::i '@EXPORT' => [qw(unbelievable)];
+
+=head2 import
+
+Imports L<Dancer2>, among others, into the caller's namespace.
+
+=cut
 
 sub import {
     my $target = caller;
@@ -91,7 +114,14 @@ sub _produce_output {
     return { template => ['raw', {%$frontmatter, htmlsource => $html}] };
 } #_produce_output
 
-# Make default routes.  Usage: unbelievable();
+=head2 unbelievable
+
+Make default routes to render Markdown files in C<content/> into HTML.
+Usage: C<unbelievable;>.  Returns a truthy value, so can be used as the
+last line in a module.
+
+=cut
+
 sub unbelievable {
     my $appname = caller or die "No caller!";
     say 'unbelievable ', __PACKAGE__, ' in ', $appname;
@@ -161,54 +191,6 @@ EOTSQ
 
 # }}}1
 # Helper routines {{{1
-#
-=head2 _line_mark_string
-
-Add a C<#line> directive to a string.  Usage:
-
-    my $str = _line_mark_string <<EOT ;
-    $contents
-    EOT
-
-or
-
-    my $str = _line_mark_string __FILE__, __LINE__, <<EOT ;
-    $contents
-    EOT
-
-In the first form, information from C<caller> will be used for the filename
-and line number.
-
-The C<#line> directive will point to the line after the C<_line_mark_string>
-invocation, i.e., the first line of <C$contents>.  Generally, C<$contents> will
-be source code, although this is not required.
-
-C<$contents> must be defined, but can be empty.
-
-=cut
-
-sub _line_mark_string {
-    my ($contents, $filename, $line);
-    if(@_ == 1) {
-        $contents = $_[0];
-        (undef, $filename, $line) = caller;
-    } elsif(@_ == 3) {
-        ($filename, $line, $contents) = @_;
-    } else {
-        _croak("Invalid invocation");
-    }
-
-    _croak("Need text") unless defined $contents;
-    die "Couldn't get location information" unless $filename && $line;
-
-    $filename =~ s/"/-/g;
-    ++$line;
-
-    return <<EOT;
-#line $line "$filename"
-$contents
-EOT
-} #_line_mark_string()
 
 # Escape in single quotes
 sub _sqescape {
@@ -216,7 +198,6 @@ sub _sqescape {
     $str =~ s/'/\\'/g;
     return "'$str'";
 }
-# }}}1
 
 # Add a suffix to the last component of a list.  No-op if the
 # list is empty.
@@ -267,23 +248,25 @@ sub _load {
     return ({}, $text);
 } #_load()
 
+# }}}1
 1;
 __END__
 
-=head1 SYNOPSIS
-
-    use App::unbelievable;  # Pulls in Dancer2
-    # your routes here
-    unbelievable;           # At EOF, fills in the rest of the routes.
-
-=head1 DESCRIPTION
-
-App::unbelievable makes a Dancer2 application into a static site generator.
-Inputs are in C<content/>.  Output goes to C<_built/>.
+# Rest of the docs {{{1
 
 =head1 THANKS
 
+=over
+
+=item *
+
 Thanks to L<Getopt::Long::Subcommand> --- I used some code from its Synopsis.
+
+=item *
+
+Thanks to L<Dancer2> and L<App::Wallflower> for doing the heavy lifting!
+
+=back
 
 =head1 LICENSE
 
@@ -298,4 +281,5 @@ Chris White E<lt>cxwembedded@gmail.comE<gt>
 
 =cut
 
+# }}}1
 # vi: set fdm=marker: #

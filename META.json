@@ -42,7 +42,24 @@
       },
       "runtime" : {
          "requires" : {
-            "perl" : "5.010001"
+            "App::Wallflower" : "0",
+            "Dancer2" : "0",
+            "File::Find::Rule" : "0",
+            "File::Slurp" : "0",
+            "File::Temp" : "0",
+            "Getopt::Long::Subcommand" : "0",
+            "Import::Into" : "0",
+            "JSON" : "0",
+            "Pod::Usage" : "0",
+            "Test::More" : "0",
+            "Text::FrontMatter::YAML" : "0",
+            "Text::MultiMarkdown" : "0",
+            "autodie" : "0",
+            "feature" : "0",
+            "parent" : "0",
+            "perl" : "5.010001",
+            "vars::i" : "0",
+            "version" : "0.77"
          }
       },
       "test" : {
