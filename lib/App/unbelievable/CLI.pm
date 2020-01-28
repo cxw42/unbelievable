@@ -1,16 +1,19 @@
 package App::unbelievable::CLI;
+# see script/unbelievable for docs.
 
 use App::unbelievable::Util;
 use Cwd;
 
 # Runner: used by script/unbelievable
-
 sub run {
     require Getopt::Long::Subcommand;
     require Pod::Usage;
     my $args = shift or die "No args";
     local @ARGV = @$args;
-    my %opts;
+    my %opts = (    # Defaults
+        verbose => 0
+    );
+
     my $res = Getopt::Long::Subcommand::GetOptions(
         summary => 'Build a static site',
         default_subcommand => 'help',
@@ -53,6 +56,12 @@ sub run {
             },
             build => {
                 summary => 'Build the static html',
+                options => {
+                    's|route-style=s' => {
+                        summary => 'Which style of route to request',
+                        handler => \$opts{route_style},
+                    },
+                },
             },
             help => {
                 summary => 'Show help',
@@ -60,7 +69,9 @@ sub run {
         }, # subcommands
     );
 
-    say "Got options:\n", Dumper($res), Dumper(\%opts) if $opts{verbose};
+    $VERBOSE = $opts{verbose} if $opts{verbose} > $VERBOSE;
+
+    _diag("Got options:\n", Dumper($res), Dumper(\%opts));
 
     Pod::Usage::pod2usage() unless $res->{success};
     Pod::Usage::pod2usage(-verbose => 1, -exitval => 0) if $opts{help};
@@ -83,6 +94,12 @@ sub cmd_new {
 sub cmd_build {
     my ($res, $opts) = @_;
     say "Build site";
+
+    # Defaults
+    $opts->{route_style} //= 'htmlfile';
+
+    _diag("unbelivable opts:\n", Dumper($opts));
+
     require App::Wallflower;
     require Config;
     require File::Find::Rule;
@@ -93,11 +110,20 @@ sub cmd_build {
 
     # List the routes
     # TODO get all GET routes from app
-    # - include all files in public/ and content/.
     my @routes;
+
+    # Get and filter the routes from /content.
     push @routes, File::Find::Rule->readable->file->relative
                     ->in(_here('content'));
-    s{\.[^\.]+$}{} foreach @routes;      # Routes in content/ don't have extensions
+    if($opts->{route_style} eq 'htmlfile') {
+        s{\.[^\.]+$}{.html} foreach @routes;
+    } elsif($opts->{route_style} eq 'dir') {
+        s{\.[^\.]+$}{/} foreach @routes;
+    } else {
+        die "Unknown route style $opts->{route_style}";
+    }
+
+    # public/ --- all files appear just as they are, sans leading /public
     push @routes, File::Find::Rule->readable->file->relative
                     ->in(_here('public'));
     s{^([^/])}{/$1} foreach @routes;

@@ -29,11 +29,14 @@ use version 0.77; our $VERSION = version->declare('v0.0.1');
 
 use App::unbelievable::Util;
 
+use App::unbelievable::StripHttpLocalhost;
+use Class::Method::Modifiers ();
 use File::Slurp;
 use File::Spec;
 use JSON;
+use Plack::Builder;
 use Text::FrontMatter::YAML;
-use Text::MultiMarkdown 'markdown';     # TODO someday - Text::Markup
+use Text::MultiMarkdown 'markdown';     # TODO someday? - Text::Markup
     # But see https://github.com/theory/text-markup/issues/20
 
 # Routes to generate the HTML from Markdown (main logic) {{{1
@@ -48,7 +51,7 @@ Imports L<Dancer2>, among others, into the caller's namespace.
 
 sub import {
     my $target = caller;
-    say 'Loading ', __PACKAGE__, ' into ', $target;
+    _diag('Loading ' . __PACKAGE__ . ' into ' . $target);
     __PACKAGE__->export_to_level(1, @_);
 
     require Import::Into;
@@ -56,8 +59,8 @@ sub import {
     require Dancer2;
     $_->import::into($target) foreach qw(Dancer2 strict warnings);
     feature->import::into($target, ':5.10');
-
 } #import()
+
 
 # Produce a file, e.g., by processing a markdown file into HTML.
 # Returns:
@@ -67,6 +70,16 @@ sub import {
 #       - {template => [...]}: args for template().
 sub _produce_output {
     my ($public_dir, $content_dir, $request, $templater, $lrTags) = @_;
+
+    die "Assertion failure - empty megasplat??!!" unless @$lrTags;
+
+    # Munge the last path component to provide the CLI with flexibility
+    $lrTags->[$#$lrTags] =~ s{/$}{};
+        # We handle /foo and /foo/ the same --- the CLI can request either.
+    $lrTags->[$#$lrTags] =~ s{\.(?:html?|md|markdown)$}{};
+        # We ignore the requested extension.  Static files are served elsewhere
+        # so never get here.
+
     my $path = join('/', @$lrTags);
     _diag("Processing file ", $path);
 
@@ -74,6 +87,7 @@ sub _produce_output {
     my @candidates;     # Where we might find it
 
     push @candidates, File::Spec->catfile($content_dir, _suffix('.md', @$lrTags));
+    push @candidates, File::Spec->catfile($content_dir, _suffix('.markdown', @$lrTags));
     push @candidates, File::Spec->catfile($public_dir, _suffix('.html', @$lrTags));
     push @candidates, File::Spec->catfile($public_dir, _suffix('.htm', @$lrTags));
 
@@ -92,28 +106,29 @@ sub _produce_output {
     my @retval = ('index');     # Name of the template
     my ($frontmatter, $markdown) = _load($fn);
     _diag("Got frontmatter\n", Dumper $frontmatter);
-    _diag("Got contents:\n$markdown");
+    _diag(\2, "Got contents:\n$markdown");
 
-    # shortcodes.  TODO other than single-arg, and clean this up!
+    # shortcodes.  TODO other than single-arg.
     $markdown =~ s[\{\{<\s*(?<code>\w+)\s+(?<arg0>\S+)\s*>\}\}]
-                [   my $code = $+{code};
-                    my @args = ($+{arg0});
-                    _diag("Shortcode $code", @args);
-                    $_ =~ s{\A(['"])(.+)\1\z}{$2} foreach @args;    # de-quote
-                    my $result = $templater->(
-                        File::Spec->catfile('shortcodes', $code),
-                        { map {; "_$_" => $args[$_]} 0..$#args },
-                        { layout => undef } );
-                    $result =~ s{^\s+|\s+$}{}g;     # trim
-                    $result;
-                ]exg;
+                    [ _shortcode($+{code}, [$+{arg0}], $templater) ]exg;
 
     my $html = markdown($markdown, {base_url => $request->uri_base});
-    _diag("Generated HTML:\n$html");
+    _diag(\2, "Generated HTML:\n$html");
 
+    # TODO permit the user to specify a template
     return { template => ['raw', {%$frontmatter, htmlsource => $html}] };
 } #_produce_output
 
+# Faux middleware to strip http://localhost references from the generated files.
+# Installed using Class::Method::Modifiers::around.
+sub _strip_http_localhost {
+    my ($to_app) = @_;
+    my $psgi = $to_app->();
+    builder {
+        enable '+App::unbelievable::StripHttpLocalhost';
+        $psgi
+    }
+} #_strip_http_localhost
 =head2 unbelievable
 
 Make default routes to render Markdown files in C<content/> into HTML.
@@ -124,7 +139,7 @@ last line in a module.
 
 sub unbelievable {
     my $appname = caller or die "No caller!";
-    say 'unbelievable ', __PACKAGE__, ' in ', $appname;
+    _diag('unbelievable ' . __PACKAGE__ . ' in ' . $appname);
 
     require Dancer2;
 
@@ -138,8 +153,8 @@ sub unbelievable {
     my ($vol, $dirs, $file) = File::Spec->splitpath($public_dir);
     my $content_dir = File::Spec->catpath($vol, $dirs, 'content');
 
-    say "public_dir $public_dir";
-    say "content_dir $content_dir";
+    _diag("public_dir $public_dir");
+    _diag("content_dir $content_dir");
 
     # Create default routes.  The caller must invoke this function
     # after defining any other routes, so these will only be used
@@ -159,8 +174,9 @@ EOT
     $text .= _line_mark_string(<<'EOTSQ');
     use Data::Dumper;
     use Dancer2 appname => $APPNAME;
+    use App::unbelievable::Util;
 
-    say 'Loading routes into ', $APPNAME;
+    _diag("Loading routes into $APPNAME");
 
     # Call our _produce_output, above, and take the appropriate action.
     # This way we don't have to try to directly invoke Dancer2 DSL in
@@ -181,10 +197,20 @@ EOT
     # handled by middleware before Dancer2 checks routes.  See
     # Dancer2::Core::App::to_app().
     get '/**' => sub { _do_file(splat) };
+
 EOTSQ
 
     eval $text;
     die $@ if $@;
+
+    # Last, but not least, arrange to remove 'http://localhost' from all
+    # HTML files.
+
+    Class::Method::Modifiers::install_modifier($appname =>
+        around => to_app => sub {
+            goto &App::unbelievable::_strip_http_localhost;
+        }
+    );
 
     return 1;   # So the unbelievable() call can be the last thing in the file
 } #unbelievable()
@@ -199,6 +225,22 @@ sub _sqescape {
     return "'$str'";
 }
 
+# Render a shortcode.  Usage: _shortcode($code, \@args, $templater)
+sub _shortcode {
+    my ($code, $lrArgs, $templater) = @_;
+    _diag(\2, "Shortcode $code @$lrArgs");
+
+    $_ =~ s{\A(['"])(.+)\1\z}{$2} foreach @$lrArgs;     # de-quote
+
+    my $result = $templater->(                          # render
+        File::Spec->catfile('shortcodes', $code),
+        { map {; "_$_" => $lrArgs->[$_]} 0..$#$lrArgs },
+        { layout => undef } );
+
+    $result =~ s{^\s+|\s+$}{}g;                         # trim
+    return $result;
+} #_shortcode()
+
 # Add a suffix to the last component of a list.  No-op if the
 # list is empty.
 sub _suffix {
@@ -209,10 +251,11 @@ sub _suffix {
 }
 
 # Load a Markdown file, which may have front matter.
+# Input must be in UTF-8.
 # Returns an arrayref of YAML documents.
 sub _load {
     my $fn = shift;
-    my $text = read_file($fn);
+    my $text = read_file($fn, {binmode => ':utf8'});
     my ($frontmatter, $markdown);
     my @errors;
     my $reader;
@@ -243,7 +286,7 @@ sub _load {
 
     # Default: assume the full contents are markdown, and there is
     # no frontmatter.
-    say join "\n  ", "While loading $fn, got errors:", @errors if $VERBOSE;
+    _diag(join "\n  ", "Assuming plain Markdown $fn --- errors were:", @errors);
 
     return ({}, $text);
 } #_load()

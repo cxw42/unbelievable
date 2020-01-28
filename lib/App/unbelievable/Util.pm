@@ -22,7 +22,7 @@ When truthy, L</_diag> produces output.
 
 =cut
 
-use vars::i '$VERBOSE' => 1;    # DEBUG
+use vars::i '$VERBOSE' => 0;
 
 use Data::Dumper;
 BEGIN { $Data::Dumper::Indent = 1; }
@@ -62,11 +62,17 @@ sub _croak {
 =head2 _diag
 
 Lazy L<Test::More/diag>, conditioned on L</$VERBOSE>.
+If the first argument is a scalar reference, output is suppressed
+unless L</$VERBOSE> is at least the referenced value.
 
 =cut
 
 sub _diag {
     return unless $VERBOSE;
+    if(ref $_[0] eq 'SCALAR') {
+        return unless $VERBOSE >= ${$_[0]};
+        shift;
+    }
     require Test::More;     # for diag()
     goto &Test::More::diag;
 }
