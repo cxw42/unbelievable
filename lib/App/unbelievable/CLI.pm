@@ -4,7 +4,8 @@ package App::unbelievable::CLI;
 use App::unbelievable::Util;
 use Cwd;
 
-# Runner: used by script/unbelievable
+# === Runner for script/unbelievable ======================================
+
 sub run {
     require Getopt::Long::Subcommand;
     require Pod::Usage;
@@ -63,6 +64,16 @@ sub run {
                     },
                 },
             },
+            serve => {
+                summary => 'Serve the static HTML using a local server',
+                # TODO
+                #options => {
+                #    'server|s=s' => {
+                #        summary => 'Which server to use',
+                #        handler => \$opts{server},
+                #    },
+                #},
+            },
             help => {
                 summary => 'Show help',
             },
@@ -84,6 +95,12 @@ sub run {
         or die "I don't know subcommand $cmdname";
     return $fn->($res, \%opts);
 } #run()
+
+# === Subcommands =========================================================
+
+sub cmd_help {
+    Pod::Usage::pod2usage(-verbose => 1, -exitval => 0);
+}
 
 sub cmd_new {
     my ($res, $opts) = @_;
@@ -135,7 +152,7 @@ sub cmd_build {
     say {$fh} join("\n", @routes);
     close $fh;  # TODO does this work?
 
-    my $destdir = _here('_output');
+    my $destdir = _here('_output');     # TODO make this an option
     do { no autodie; mkdir $destdir };
     my $wallflower_opts = [
         ( '--verbose' )x!! $VERBOSE,
@@ -149,6 +166,21 @@ sub cmd_build {
     my $builder = App::Wallflower->new_with_options($wallflower_opts);
     return $builder->run // 0;
 } #cmd_build()
+
+sub cmd_serve {
+    # Thanks to plackup(1) and to https://github.com/plack/Plack/issues/93
+    require Plack::Runner;
+    my $runner = Plack::Runner->new;    # TODO add options
+    my $dir = _here('_output');
+    $dir =~ s/"/\"/g;   # Just in case
+    $runner->parse_options(
+        qw(-MPlack::App::File -MPlack::Middleware::DirIndex -e),
+        "enable 'DirIndex'; Plack::App::File->new(root => \"$dir\")->to_app"
+    );
+    return $runner->run;
+}
+
+# === Helpers =============================================================
 
 # Return the path of a directory under cwd
 sub _here {
