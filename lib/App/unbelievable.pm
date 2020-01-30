@@ -29,8 +29,6 @@ use version 0.77; our $VERSION = version->declare('v0.0.1');
 
 use App::unbelievable::Util;
 
-use App::unbelievable::StripHttpLocalhost;
-use Class::Method::Modifiers ();
 use File::Slurp;
 use File::Spec;
 use JSON;
@@ -112,23 +110,13 @@ sub _produce_output {
     $markdown =~ s[\{\{<\s*(?<code>\w+)\s+(?<arg0>\S+)\s*>\}\}]
                     [ _shortcode($+{code}, [$+{arg0}], $templater) ]exg;
 
-    my $html = markdown($markdown, {base_url => $request->uri_base});
+    my $html = markdown($markdown, {base_url => '/'});
     _diag(\2, "Generated HTML:\n$html");
 
     # TODO permit the user to specify a template
     return { template => ['raw', {%$frontmatter, htmlsource => $html}] };
 } #_produce_output
 
-# Faux middleware to strip http://localhost references from the generated files.
-# Installed using Class::Method::Modifiers::around.
-sub _strip_http_localhost {
-    my ($to_app) = @_;
-    my $psgi = $to_app->();
-    builder {
-        enable '+App::unbelievable::StripHttpLocalhost';
-        $psgi
-    }
-} #_strip_http_localhost
 =head2 unbelievable
 
 Make default routes to render Markdown files in C<content/> into HTML.
@@ -202,15 +190,6 @@ EOTSQ
 
     eval $text;
     die $@ if $@;
-
-    # Last, but not least, arrange to remove 'http://localhost' from all
-    # HTML files.
-
-    Class::Method::Modifiers::install_modifier($appname =>
-        around => to_app => sub {
-            goto &App::unbelievable::_strip_http_localhost;
-        }
-    );
 
     return 1;   # So the unbelievable() call can be the last thing in the file
 } #unbelievable()

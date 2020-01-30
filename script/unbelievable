@@ -34,6 +34,10 @@ Dancer2 application.  C<content/> generally holds your Markdown files.
 For example, C<content/foo.md> will be accessible (unless you say otherwise
 in your Dancer2 code) as C</foo> and C</foo/>.
 
+For now, don't use C<request.uri_base> in your templates.  The generated
+templates assume they are mounted in C</>.  Please open an issue if that
+turns out to be a problem.
+
 =head1 SUBCOMMANDS
 
 =head2 new
