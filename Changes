@@ -2,6 +2,8 @@ Revision history for Perl extension App-unbelievable
 
 {{$NEXT}}
 
+    - Add `serve`; update `build` accordingly.
+
 v0.0.1 2020-01-27T02:47:08Z (TRIAL RELEASE)
 
     - original version

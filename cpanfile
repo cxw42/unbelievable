@@ -6,6 +6,8 @@ requires 'File::Temp';
 requires 'Getopt::Long::Subcommand';
 requires 'Import::Into';
 requires 'JSON';
+requires 'Plack::Builder';
+requires 'Plack::Runner';
 requires 'Pod::Usage';
 requires 'Test::More';
 requires 'Text::FrontMatter::YAML';

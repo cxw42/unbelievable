@@ -12,7 +12,9 @@ use 5.010001;   # For say(), stacked file tests
 use feature ':5.10';
 use strict;
 use warnings;
-use autodie ':all';
+use autodie ':all';     # NOTE: requires IPC::System::Simple, which I am not
+                        # yet requiring in order to collect data for
+                        # https://github.com/Perl/perl5/issues/17507 .
 
 use Import::Into;
 
