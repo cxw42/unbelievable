@@ -65,21 +65,6 @@ sub import {
 # (Kamelon is case-sensitive).
 my %SYNTAXES;
 
-# Normalize a syntax name into a key for %SYNTAXES
-sub _normalize_syntax {
-    my $retval = lc(shift);
-    $retval =~ s/[^A-Za-z0-9]/_/g;
-    $retval =~ tr/_/_/s;
-    return $retval;
-}
-# Populates %SYNTAXES.  Must be called before
-# _produce_output().  Called by unbelievable().
-sub _initialize {
-    my $indexer = Syntax::Kamelon::Indexer->new();
-    %SYNTAXES = map { _normalize_syntax($_) => $_ } $indexer->AvailableSyntaxes;
-    say "Syntaxes:\n", Dumper(\%SYNTAXES) if $VERBOSE;
-} #_initialize()
-
 # Produce a file, e.g., by processing a markdown file into HTML.
 # Returns:
 #   - falsy: pass
@@ -156,7 +141,10 @@ sub _produce_output {
 
         # We have a syntax
         my $sk = Syntax::Kamelon->new(
-            formatter => ['HTML4', inlinecss => 1],
+            formatter => ['HTML4',
+                            inlinecss => 1,
+                            theme => 'LightGray',   # TODO let user specify
+                         ],
             syntax => $SYNTAXES{$lang},
         );
         $sk->Parse($text);
@@ -345,6 +333,22 @@ sub _load {
 
     return ({}, $text);
 } #_load()
+
+# Normalize a syntax name into a key for %SYNTAXES
+sub _normalize_syntax {
+    my $retval = lc(shift);
+    $retval =~ s/[^A-Za-z0-9]/_/g;
+    $retval =~ tr/_/_/s;
+    return $retval;
+}
+
+# Populates %SYNTAXES.  Must be called before
+# _produce_output().  Called by unbelievable().
+sub _initialize {
+    my $indexer = Syntax::Kamelon::Indexer->new();
+    %SYNTAXES = map { _normalize_syntax($_) => $_ } $indexer->AvailableSyntaxes;
+    say "Syntaxes:\n", Dumper(\%SYNTAXES) if $VERBOSE >= 2;
+} #_initialize()
 
 # }}}1
 1;
