@@ -25,7 +25,7 @@ and other assets into C<_built/>.
 
 # }}}1
 
-use version 0.77; our $VERSION = version->declare('v0.0.2');
+use version 0.77; our $VERSION = version->declare('v0.0.3');
 
 use App::unbelievable::Util;
 

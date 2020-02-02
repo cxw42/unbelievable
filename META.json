@@ -48,11 +48,14 @@
             "File::Slurp" : "0",
             "File::Temp" : "0",
             "Getopt::Long::Subcommand" : "0",
+            "IPC::System::Simple" : "0",
             "Import::Into" : "0",
             "JSON" : "0",
             "Plack::Builder" : "0",
             "Plack::Runner" : "0",
             "Pod::Usage" : "0",
+            "Syntax::Kamelon" : "0",
+            "Syntax::Kamelon::Indexer" : "0",
             "Test::More" : "0",
             "Text::FrontMatter::YAML" : "0",
             "Text::MultiMarkdown" : "0",
@@ -82,7 +85,7 @@
          "web" : "https://github.com/cxw42/unbelievable"
       }
    },
-   "version" : "v0.0.2",
+   "version" : "v0.0.3",
    "x_authority" : "cpan:CXW",
    "x_contributors" : [
       "Chris White <cxwembedded@gmail.com>"

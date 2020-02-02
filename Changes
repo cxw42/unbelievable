@@ -2,6 +2,8 @@ Revision history for Perl extension App-unbelievable
 
 {{$NEXT}}
 
+v0.0.3 2020-02-02T02:42:37Z (TRIAL RELEASE)
+
     - Add syntax-highlighted fenced code blocks using Syntax::Kamelon
     - Add dependency on IPC::System::Simple to hopefully fix test failures
 
