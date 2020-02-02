@@ -137,7 +137,6 @@ sub _produce_output {
                                 # include each style or script block once.
 
     pos($markdown) = 0;
-$DB::single=1;
     while($markdown =~ m{\G.*?(^```(\S+)$(.*?)^```)}gcms) {
 
         my ($lang, $text) = (_normalize_syntax($2), $3);
@@ -150,6 +149,10 @@ $DB::single=1;
                 "```\n$text```";    # Just remove the language tag
             next;
         }
+
+        # Trim newline at the start (because the $ above matched _before_
+        # the newline after the '```')
+        $text =~ s{\A\R}{};
 
         # We have a syntax
         my $sk = Syntax::Kamelon->new(
