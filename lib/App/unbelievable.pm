@@ -33,6 +33,8 @@ use File::Slurp;
 use File::Spec;
 use JSON;
 use Plack::Builder;
+use Syntax::Kamelon;
+use Syntax::Kamelon::Indexer;
 use Text::FrontMatter::YAML;
 use Text::MultiMarkdown 'markdown';     # TODO someday? - Text::Markup
     # But see https://github.com/theory/text-markup/issues/20
@@ -59,6 +61,24 @@ sub import {
     feature->import::into($target, ':5.10');
 } #import()
 
+# The list of Kamelon syntaxes we know about, keyed lower-case
+# (Kamelon is case-sensitive).
+my %SYNTAXES;
+
+# Normalize a syntax name into a key for %SYNTAXES
+sub _normalize_syntax {
+    my $retval = lc(shift);
+    $retval =~ s/[^A-Za-z0-9]/_/g;
+    $retval =~ tr/_/_/s;
+    return $retval;
+}
+# Populates %SYNTAXES.  Must be called before
+# _produce_output().  Called by unbelievable().
+sub _initialize {
+    my $indexer = Syntax::Kamelon::Indexer->new();
+    %SYNTAXES = map { _normalize_syntax($_) => $_ } $indexer->AvailableSyntaxes;
+    say "Syntaxes:\n", Dumper(\%SYNTAXES) if $VERBOSE;
+} #_initialize()
 
 # Produce a file, e.g., by processing a markdown file into HTML.
 # Returns:
@@ -100,7 +120,7 @@ sub _produce_output {
 
     return {send_file => $fn} if $fn =~ /\.html?$/;
 
-    # Process a Markdown file
+    # Load Markdown file
     my @retval = ('index');     # Name of the template
     my ($frontmatter, $markdown) = _load($fn);
     _diag("Got frontmatter\n", Dumper $frontmatter);
@@ -110,11 +130,63 @@ sub _produce_output {
     $markdown =~ s[\{\{<\s*(?<code>\w+)\s+(?<arg0>\S+)\s*>\}\}]
                     [ _shortcode($+{code}, [$+{arg0}], $templater) ]exg;
 
+    # Fenced, tagged code blocks.
+    # TODO in S::K, don't repeat IDs for the line divs (currently each
+    # block has lines id="1", id="2", ...).
+    my (%styles, %scripts);     # Map from text to 1.  This way we only
+                                # include each style or script block once.
+
+    pos($markdown) = 0;
+$DB::single=1;
+    while($markdown =~ m{\G.*?(^```(\S+)$(.*?)^```)}gcms) {
+
+        my ($lang, $text) = (_normalize_syntax($2), $3);
+        my $fence_start = $-[1];        # Where the fenced block ($1) is
+        my $fence_len = $+[1] - $-[1];
+
+        if(!$SYNTAXES{$lang}) {
+            warn "Unknown language $2 in $path";
+            substr($markdown, $fence_start, $fence_len) =
+                "```\n$text```";    # Just remove the language tag
+            next;
+        }
+
+        # We have a syntax
+        my $sk = Syntax::Kamelon->new(
+            formatter => ['HTML4', inlinecss => 1],
+            syntax => $SYNTAXES{$lang},
+        );
+        $sk->Parse($text);
+        my $html = $sk->Format;
+
+        # Never use regex to parse HTML!!!! :D :D
+        foreach my $style ($html =~ m{<style[^>]*>(.*?)</style[^>]*>}gs) {
+            next if exists $styles{$style};
+            $styles{$style} = 1;
+        }
+        foreach my $script ($html =~ m{<script[^>]*>(.*?)</script[^>]*>}gs) {
+            next if exists $scripts{$script};
+            $scripts{$script} = 1;
+        }
+        my ($content) = $sk->Format =~ m{<body>(.*)</body>}s;
+
+        substr($markdown, $fence_start, $fence_len) = $content;
+    }
+
+    # Process what's left
     my $html = markdown($markdown, {base_url => '/'});
-    _diag(\2, "Generated HTML:\n$html");
 
     # TODO permit the user to specify a template
-    return { template => ['raw', {%$frontmatter, htmlsource => $html}] };
+    _diag(\2, "Generated HTML:\n$html");
+    return { template => [
+                'raw',
+                {
+                    %$frontmatter,
+                    htmlsource => $html,
+                    styles => join("\n", keys %styles),
+                    scripts => join("\n", keys %scripts),
+                }
+            ] };
 } #_produce_output
 
 =head2 unbelievable
@@ -165,6 +237,7 @@ EOT
     use App::unbelievable::Util;
 
     _diag("Loading routes into $APPNAME");
+    App::unbelievable::_initialize();
 
     # Call our _produce_output, above, and take the appropriate action.
     # This way we don't have to try to directly invoke Dancer2 DSL in

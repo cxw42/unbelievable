@@ -12,9 +12,8 @@ use 5.010001;   # For say(), stacked file tests
 use feature ':5.10';
 use strict;
 use warnings;
-use autodie ':all';     # NOTE: requires IPC::System::Simple, which I am not
-                        # yet requiring in order to collect data for
-                        # https://github.com/Perl/perl5/issues/17507 .
+use IPC::System::Simple;    # for autodie ':all'
+use autodie ':all';
 
 use Import::Into;
 
@@ -27,11 +26,15 @@ When truthy, L</_diag> produces output.
 use vars::i '$VERBOSE' => 0;
 
 use Data::Dumper;
-BEGIN { $Data::Dumper::Indent = 1; }
+BEGIN {
+    $Data::Dumper::Indent = 1;
+    $Data::Dumper::Sortkeys = 1;
+}
 require File::Spec;
 
 use parent 'Exporter';
-use vars::i '@EXPORT' => [qw($VERBOSE _croak _diag _line_mark_string)];
+use vars::i
+    '@EXPORT' => [qw($VERBOSE _croak _diag _line_mark_string)];
 
 =head1 FUNCTIONS
 
@@ -47,6 +50,7 @@ sub import {
 
     $_->import::into($target) foreach qw(strict warnings Data::Dumper File::Spec);
     feature->import::into($target, ':5.10');
+    IPC::System::Simple->import::into($target);
     autodie->import::into($target, ':all');
 } #import()
 

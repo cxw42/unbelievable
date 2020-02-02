@@ -12,6 +12,10 @@
     !window.jQuery && document.write('<script type="text/javascript" src="/javascripts/jquery.js"><\/script>')
 /* ]]> */</script>
 
+    <style><% styles %></style>
+    <script type="text/javascript">/* <![CDATA[ */
+        <% scripts %>
+    /* ]]> */</script>
 </head>
 <body>
 <% content %>
