@@ -8,6 +8,7 @@ requires 'IPC::System::Simple';
 requires 'Import::Into';
 requires 'JSON';
 requires 'Plack::Builder';
+requires 'Plack::Middleware::DirIndex';
 requires 'Plack::Runner';
 requires 'Pod::Usage';
 requires 'Syntax::Kamelon';
