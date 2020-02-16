@@ -2,6 +2,8 @@ Revision history for Perl extension App-unbelievable
 
 {{$NEXT}}
 
+v0.0.4 2020-02-16T02:22:45Z
+
     - Change syntax highlighter to Kate since doing so reduces the
       chance of test failures on installation of this module.
     - Add new CLI command `aio` = build + serve.
