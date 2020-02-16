@@ -74,6 +74,9 @@ sub run {
                 #    },
                 #},
             },
+            aio => {
+                summary => 'build + serve (all in one)',
+            },
             help => {
                 summary => 'Show help',
             },
@@ -100,6 +103,14 @@ sub run {
 
 sub cmd_help {
     Pod::Usage::pod2usage(-verbose => 1, -exitval => 0);
+}
+
+sub cmd_aio {
+    my ($res, $opts) = @_;
+    my $rv = cmd_build($res, $opts);
+    return $rv if $rv;
+    $rv = cmd_serve($res, $opts);
+    return $rv;
 }
 
 sub cmd_new {
@@ -130,7 +141,7 @@ sub cmd_build {
     my @routes;
 
     # Get and filter the routes from /content.
-    push @routes, File::Find::Rule->readable->file->relative
+    push @routes, File::Find::Rule->readable->file->not_name('.*')->relative
                     ->in(_here('content'));
     if($opts->{route_style} eq 'htmlfile') {
         s{\.[^\.]+$}{.html} foreach @routes;

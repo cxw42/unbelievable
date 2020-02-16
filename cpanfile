@@ -11,8 +11,7 @@ requires 'Plack::Builder';
 requires 'Plack::Middleware::DirIndex';
 requires 'Plack::Runner';
 requires 'Pod::Usage';
-requires 'Syntax::Kamelon';
-requires 'Syntax::Kamelon::Indexer';
+requires 'Syntax::Highlight::Engine::Kate';
 requires 'Test::More';
 requires 'Text::FrontMatter::YAML';
 requires 'Text::MultiMarkdown';
@@ -29,4 +28,10 @@ on configure => sub {
 
 on test => sub {
     requires 'Test::More', '0.98';
+};
+
+on develop => sub {
+    requires 'CPAN::Uploader';
+    requires 'Minilla';
+    requires 'Version::Next';
 };

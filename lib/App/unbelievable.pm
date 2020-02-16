@@ -6,26 +6,31 @@ package App::unbelievable;
 
 =head1 NAME
 
-App::unbelievable - Yet another site generator (can you believe it?)
+App::unbelievable - Dancer2 static site generator
 
 =head1 SYNOPSIS
+
+In your Dancer2 app:
 
     use App::unbelievable;  # Pulls in Dancer2
     # your routes here
     unbelievable;           # At EOF, fills in the rest of the routes.
+
+Then:
+
+    $ unbelievable build    # Make the HTML
+    $ unbelievable serve    # Run a local development server
 
 App::unbelievable makes a Dancer2 application into a static site generator.
 App::unbelievable adds routes for C</> and C</**> that will render Markdown
 files in C<content/>.  The L<unbelievable> script generates static HTML
 and other assets into C<_built/>.
 
-=head1 FUNCTIONS
-
 =cut
 
 # }}}1
 
-use version 0.77; our $VERSION = version->declare('v0.0.3');
+use version 0.77; our $VERSION = version->declare('v0.0.4');
 
 use App::unbelievable::Util;
 
@@ -33,8 +38,8 @@ use File::Slurp;
 use File::Spec;
 use JSON;
 use Plack::Builder;
-use Syntax::Kamelon;
-use Syntax::Kamelon::Indexer;
+use Syntax::Highlight::Engine::Kate;
+use Syntax::Highlight::Engine::Kate::All;
 use Text::FrontMatter::YAML;
 use Text::MultiMarkdown 'markdown';     # TODO someday? - Text::Markup
     # But see https://github.com/theory/text-markup/issues/20
@@ -42,12 +47,6 @@ use Text::MultiMarkdown 'markdown';     # TODO someday? - Text::Markup
 # Routes to generate the HTML from Markdown (main logic) {{{1
 use parent 'Exporter';
 use vars::i '@EXPORT' => [qw(unbelievable)];
-
-=head2 import
-
-Imports L<Dancer2>, among others, into the caller's namespace.
-
-=cut
 
 sub import {
     my $target = caller;
@@ -61,7 +60,7 @@ sub import {
     feature->import::into($target, ':5.10');
 } #import()
 
-# The list of Kamelon syntaxes we know about, keyed lower-case
+# The list of syntaxes we know about, keyed lower-case
 # (Kamelon is case-sensitive).
 my %SYNTAXES;
 
@@ -139,29 +138,7 @@ sub _produce_output {
         # the newline after the '```')
         $text =~ s{\A\R}{};
 
-        # We have a syntax
-        my $sk = Syntax::Kamelon->new(
-            formatter => ['HTML4',
-                            inlinecss => 1,
-                            theme => 'LightGray',   # TODO let user specify
-                         ],
-            syntax => $SYNTAXES{$lang},
-        );
-        $sk->Parse($text);
-        my $html = $sk->Format;
-
-        # Never use regex to parse HTML!!!! :D :D
-        foreach my $style ($html =~ m{<style[^>]*>(.*?)</style[^>]*>}gs) {
-            next if exists $styles{$style};
-            $styles{$style} = 1;
-        }
-        foreach my $script ($html =~ m{<script[^>]*>(.*?)</script[^>]*>}gs) {
-            next if exists $scripts{$script};
-            $scripts{$script} = 1;
-        }
-        my ($content) = $sk->Format =~ m{<body>(.*)</body>}s;
-
-        substr($markdown, $fence_start, $fence_len) = $content;
+        substr($markdown, $fence_start, $fence_len) = _highlight($lang, $text);
     }
 
     # Process what's left
@@ -179,14 +156,6 @@ sub _produce_output {
                 }
             ] };
 } #_produce_output
-
-=head2 unbelievable
-
-Make default routes to render Markdown files in C<content/> into HTML.
-Usage: C<unbelievable;>.  Returns a truthy value, so can be used as the
-last line in a module.
-
-=cut
 
 sub unbelievable {
     my $appname = caller or die "No caller!";
@@ -345,16 +314,130 @@ sub _normalize_syntax {
 # Populates %SYNTAXES.  Must be called before
 # _produce_output().  Called by unbelievable().
 sub _initialize {
-    my $indexer = Syntax::Kamelon::Indexer->new();
-    %SYNTAXES = map { _normalize_syntax($_) => $_ } $indexer->AvailableSyntaxes;
+    foreach(keys %INC) {
+        next unless m{Syntax/Highlight/Engine/Kate/([^\.]+).pm$};
+        $SYNTAXES{_normalize_syntax($1)} = $1;
+    }
     say "Syntaxes:\n", Dumper(\%SYNTAXES) if $VERBOSE >= 2;
 } #_initialize()
+
+# Syntax-highlight text
+sub _highlight {
+    my ($lang, $text) = @_;
+
+    # Make the highlighter
+    my $hl = Syntax::Highlight::Engine::Kate->new(
+        language => $SYNTAXES{$lang},
+
+        substitutions => {
+            "<"  => "&lt;",
+            ">"  => "&gt;",
+            "&"  => "&amp;",
+            " "  => "&nbsp;",
+            "\t" => "&nbsp;&nbsp;&nbsp;",
+            "\n" => "<BR>\n",
+        },
+
+        format_table => {
+            Alert        => [ "<font color=\"#0000ff\">",       "</font>" ],
+            BaseN        => [ "<font color=\"#007f00\">",       "</font>" ],
+            BString      => [ "<font color=\"#c9a7ff\">",       "</font>" ],
+            Char         => [ "<font color=\"#ff00ff\">",       "</font>" ],
+            Comment      => [ "<font color=\"#7f7f7f\"><i>",    "</i></font>" ],
+            DataType     => [ "<font color=\"#0000ff\">",       "</font>" ],
+            DecVal       => [ "<font color=\"#00007f\">",       "</font>" ],
+            Error        => [ "<font color=\"#ff0000\"><b><i>", "</i></b></font>" ],
+            Float        => [ "<font color=\"#00007f\">",       "</font>" ],
+            Function     => [ "<font color=\"#007f00\">",       "</font>" ],
+            IString      => [ "<font color=\"#ff0000\">",       "" ],
+            Keyword      => [ "<b>",                            "</b>" ],
+            Normal       => [ "",                               "" ],
+            Operator     => [ "<font color=\"#ffa500\">",       "</font>" ],
+            Others       => [ "<font color=\"#b03060\">",       "</font>" ],
+            RegionMarker => [ "<font color=\"#96b9ff\"><i>",    "</i></font>" ],
+            Reserved     => [ "<font color=\"#9b30ff\"><b>",    "</b></font>" ],
+            String       => [ "<font color=\"#ff0000\">",       "</font>" ],
+            Variable     => [ "<font color=\"#0000ff\"><b>",    "</b></font>" ],
+            Warning      => [ "<font color=\"#0000ff\"><b><i>", "</b></i></font>" ],
+        },
+    );
+
+    return '<div>' . $hl->highlightText($text) . '</div>';
+} #_make_highlighter()
 
 # }}}1
 1;
 __END__
 
 # Rest of the docs {{{1
+
+=head1 FEATURES
+
+=head2 Markdown rendering
+
+All non-hidden files in C<content/> are rendered as Markdown files.
+Hidden files are those that start with a C<.> (the Unix convention).
+
+=head2 Fenced code blocks
+
+Fenced code blocks are syntax-highlighted using
+L<Syntax::Highlight::Engine::Kate>.  Language names are the lowercased
+versions of the module suffixes in
+L<Syntax::Highlight::Engine::Kate::All|https://metacpan.org/source/MANWAR/Syntax-Highlight-Engine-Kate-0.14/lib/Syntax/Highlight/Engine/Kate/All.pm>.
+
+=head2 Shortcodes
+
+In Markdown inputs, shortcode tags of the form:
+
+    {{< KEY [args] >}}
+
+are replaced with the Dancer2 template C<shortcodes/KEY>
+(e.g., C<views/shortcodes/foo.tt>).  Currently, only one argument is supported;
+it is passed to the template as variable C<_0>.
+
+=head2 Templates
+
+Use whatever you want in your routes!  Use regular Dancer2 templating.
+
+=head2 Static files
+
+Everything in C<public/> is available under C</>, just as in Dancer2.
+
+=head1 WHY?
+
+Yet another site generator --- can you believe it?  And now you know where
+the package name comes from ;) .
+
+This package's roadmap is feature parity with L<Hugo|https://gohugo.io/>.
+
+My motivation for writing unbelievable was two-fold:
+
+=over
+
+=item 1.
+
+Perl.com is currently using Hugo, which is not written in Perl!
+
+=item 2.
+
+"every self-respecting programmer has written at least one static site
+generator ... since writing a basic one is easy and often tends to be easier
+than learning an existing one." --- SHLOMIF
+(L<here|http://web-cpan.shlomifish.org/latemp/>).  :D
+
+=back
+
+=head1 FUNCTIONS
+
+=head2 import
+
+Imports L<Dancer2>, among others, into the caller's namespace.
+
+=head2 unbelievable
+
+Make default routes to render Markdown files in C<content/> into HTML.
+Usage: C<unbelievable;>.  Returns a truthy value, so can be used as the
+last line in a module.
 
 =head1 THANKS
 
@@ -366,7 +449,8 @@ Thanks to L<Getopt::Long::Subcommand> --- I used some code from its Synopsis.
 
 =item *
 
-Thanks to L<Dancer2> and L<App::Wallflower> for doing the heavy lifting!
+Thanks to L<App::Wallflower>, L<Dancer2>, and
+L<Syntax::Highlight::Engine::Kate> for doing the heavy lifting!
 
 =back
 
