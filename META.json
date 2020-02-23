@@ -66,7 +66,7 @@
             "feature" : "0",
             "parent" : "0",
             "perl" : "5.010001",
-            "vars::i" : "0",
+            "vars::i" : "1.10",
             "version" : "0.77"
          }
       },
@@ -88,7 +88,7 @@
          "web" : "https://github.com/cxw42/unbelievable"
       }
    },
-   "version" : "v0.0.4",
+   "version" : "v0.0.5",
    "x_authority" : "cpan:CXW",
    "x_contributors" : [
       "Chris White <cxwembedded@gmail.com>"
