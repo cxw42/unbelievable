@@ -54,13 +54,16 @@
             "IPC::System::Simple" : "0",
             "Import::Into" : "0",
             "JSON" : "0",
+            "List::AutoNumbered" : "0.000009",
             "Plack::Builder" : "0",
             "Plack::Middleware::DirIndex" : "0",
             "Plack::Runner" : "0",
             "Pod::Usage" : "0",
+            "Regexp::Common" : "2016060101",
             "Syntax::Highlight::Engine::Kate" : "0",
             "Test::More" : "0",
             "Text::FrontMatter::YAML" : "0",
+            "Text::LineNumber" : "0",
             "Text::MultiMarkdown" : "0",
             "autodie" : "0",
             "feature" : "0",
@@ -72,6 +75,7 @@
       },
       "test" : {
          "requires" : {
+            "Data::Dumper" : "0",
             "Test::More" : "0.98"
          }
       }

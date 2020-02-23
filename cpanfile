@@ -7,6 +7,7 @@ requires 'Getopt::Long::Subcommand';
 requires 'IPC::System::Simple';
 requires 'Import::Into';
 requires 'JSON';
+requires 'List::AutoNumbered', '0.000009';
 requires 'Plack::Builder';
 requires 'Plack::Middleware::DirIndex';
 requires 'Plack::Runner';
@@ -15,6 +16,7 @@ requires 'Regexp::Common', '2016060101';    # warning fixes on $RE{delimited}
 requires 'Syntax::Highlight::Engine::Kate';
 requires 'Test::More';
 requires 'Text::FrontMatter::YAML';
+requires 'Text::LineNumber';
 requires 'Text::MultiMarkdown';
 requires 'autodie';
 requires 'feature';

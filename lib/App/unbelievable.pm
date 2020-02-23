@@ -42,6 +42,7 @@ use Regexp::Common qw(delimited);
 use Syntax::Highlight::Engine::Kate;
 use Syntax::Highlight::Engine::Kate::All;
 use Text::FrontMatter::YAML;
+use Text::LineNumber;
 use Text::MultiMarkdown 'markdown';     # TODO someday? - Text::Markup
     # But see https://github.com/theory/text-markup/issues/20
 
@@ -275,6 +276,11 @@ sub _process_shortcodes {
 
     # === Do the work ===
 
+    my $extra = 0;  # How many more (or fewer) characters $_[2] had than when
+                    # we started.
+    my $tln = Text::LineNumber->new($_[2]);
+        # Save the line numbers as they are in the input, before any changes.
+
     CODE: while($_[2] =~ m{$RE_opener}gc) {
         my $code = $+{code};
         my $startpos = $-[0];
@@ -284,7 +290,8 @@ sub _process_shortcodes {
 
         ARG: while($_[2] =~ m{$RE_post_opener}gc) {
             if(exists $+{eostr} || exists $+{opening_delim}) {
-                die "Unterminated shortcode $code in $filename starting at char $startpos";
+                die "Unterminated shortcode $code in $filename starting at " .
+                    join ':', $tln->off2lnr($startpos-$extra);
 
             } elsif(exists $+{arg}) {
                 my $arg = $+{arg};
@@ -301,15 +308,19 @@ sub _process_shortcodes {
                 last;
 
             } else {
-                die "I can't understand shortcode $code in $filename starting at char $startpos";
+                die "I can't understand shortcode $code in $filename starting at " .
+                    join ':', $tln->off2lnr($startpos-$extra);
             }
         } #while in a particular shortcode
 
         if($have_closer) {
             my $newtext = $callback->($code, \@args, $templater);
             substr($_[2], $startpos, $endpos-$startpos+1) = $newtext;
+            $extra += length($newtext) - ($endpos-$startpos+1);
+
         } else {
-            die "I can't find what I expected in shortcode $code in $filename starting at char $startpos";
+            die "I can't find what I expected in shortcode $code in $filename starting at " .
+                    join ':', $tln->off2lnr($startpos-$extra);
         }
     } # while we have shortcodes
 } #_process_shortcodes()
@@ -319,11 +330,9 @@ sub _shortcode {
     my ($code, $lrArgs, $templater) = @_;
     _diag(\2, "Shortcode $code @$lrArgs");
 
-    $_ =~ s{\A(['"])(.+)\1\z}{$2} foreach @$lrArgs;     # de-quote
-
     my $result = $templater->(                          # render
         File::Spec->catfile('shortcodes', $code),
-        { map {; "_$_" => $lrArgs->[$_]} 0..$#$lrArgs },
+        { _ => $lrArgs, map {; "_$_" => $lrArgs->[$_]} 0..$#$lrArgs },
         { layout => undef } );
 
     $result =~ s{^\s+|\s+$}{}g;                         # trim
@@ -398,7 +407,7 @@ sub _initialize {
     say "Syntaxes:\n", Dumper(\%SYNTAXES) if $VERBOSE >= 2;
 } #_initialize()
 
-# Syntax-highlight text
+# Syntax-highlight text.  This is taken from the perldoc for S::H::E::Kate.
 sub _highlight {
     my ($lang, $text) = @_;
 
@@ -468,9 +477,14 @@ In Markdown inputs, shortcode tags of the form:
 
     {{< KEY [args] >}}
 
-are replaced with the Dancer2 template C<shortcodes/KEY>
-(e.g., C<views/shortcodes/foo.tt>).  Currently, only one argument is supported;
-it is passed to the template as variable C<_0>.
+are replaced with the Dancer2 template C<shortcodes/KEY> (e.g.,
+C<views/shortcodes/foo.tt>).  Arguments are passed to the template as array
+C<_>.  Each individual argument is also passed to the template as variable
+C<_n>, C<n>=0, 1, ... .
+
+Each argument can be a sequence of non-space characters (e.g., C<foo>), or
+a quoted string.  Quoted strings can be delimited by C<'> or C<">, and can
+include embedded quotes escaped using a backslash (e.g., C<'cxw\'s SSG'>).
 
 =head2 Templates
 
@@ -522,7 +536,8 @@ last line in a module.
 
 =item *
 
-Thanks to L<Getopt::Long::Subcommand> --- I used some code from its Synopsis.
+Thanks to L<Getopt::Long::Subcommand> and L<Syntax::Highlight::Engine::Kate> ---
+I used some code from the perldoc of those modules.
 
 =item *
 

@@ -40,9 +40,14 @@ In Markdown inputs, shortcode tags of the form:
 
     {{< KEY [args] >}}
 
-are replaced with the Dancer2 template `shortcodes/KEY`
-(e.g., `views/shortcodes/foo.tt`).  Currently, only one argument is supported;
-it is passed to the template as variable `_0`.
+are replaced with the Dancer2 template `shortcodes/KEY` (e.g.,
+`views/shortcodes/foo.tt`).  Arguments are passed to the template as array
+`_`.  Each individual argument is also passed to the template as variable
+`_n`, `n`=0, 1, ... .
+
+Each argument can be a sequence of non-space characters (e.g., `foo`), or
+a quoted string.  Quoted strings can be delimited by `'` or `"`, and can
+include embedded quotes escaped using a backslash (e.g., `'cxw\'s SSG'`).
 
 ## Templates
 
@@ -81,7 +86,8 @@ last line in a module.
 
 # THANKS
 
-- Thanks to [Getopt::Long::Subcommand](https://metacpan.org/pod/Getopt::Long::Subcommand) --- I used some code from its Synopsis.
+- Thanks to [Getopt::Long::Subcommand](https://metacpan.org/pod/Getopt::Long::Subcommand) and [Syntax::Highlight::Engine::Kate](https://metacpan.org/pod/Syntax::Highlight::Engine::Kate) ---
+I used some code from the perldoc of those modules.
 - Thanks to [App::Wallflower](https://metacpan.org/pod/App::Wallflower), [Dancer2](https://metacpan.org/pod/Dancer2), and
 [Syntax::Highlight::Engine::Kate](https://metacpan.org/pod/Syntax::Highlight::Engine::Kate) for doing the heavy lifting!
 

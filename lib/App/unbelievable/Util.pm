@@ -34,7 +34,7 @@ require File::Spec;
 
 use parent 'Exporter';
 use vars::i
-    '@EXPORT' => [qw($VERBOSE _croak _diag _line_mark_string)];
+    '@EXPORT' => [qw($VERBOSE _croak _diag _line_mark_string elide)];
 
 =head1 FUNCTIONS
 
@@ -131,4 +131,73 @@ $contents
 EOT
 } #_line_mark_string()
 
+=head1 elide
+
+Truncate a string to a desired length, adding an ellipsis if truncated.
+Copied from L<String::Escape> by Matthew Simon Cavalletto.
+
+=cut
+
+use vars::i {
+    '$Elipses' => '...',
+    '$DefaultLength' => 60,
+    '$DefaultStrictness' => 10,
+};
+
+# $elided_string = elide($string);
+# $elided_string = elide($string, $length);
+# $elided_string = elide($string, $length, $word_boundary_strictness);
+# $elided_string = elide($string, $length, $word_boundary_strictness, $elipses);
+sub elide ($;$$) {
+        my $source     = shift;
+        my $length     = scalar(@_) ? shift() : $DefaultLength;
+        my $word_limit = scalar(@_) ? shift() : $DefaultStrictness;
+        my $elipses    = scalar(@_) ? shift() : $Elipses;
+
+        # If the source is already short, we don't need to do anything
+        return $source if (length($source) < $length);
+
+        # Leave room for the elipses and make sure we include at least one character.
+        $length -= length( $elipses );
+        $length = 1 if ( $length < 1 );
+
+        my $excerpt;
+
+        # Try matching $length characters or less at a word boundary.
+        $excerpt = ( $source =~ /^(.{0,$length})(?:\s|\Z)/ )[0] if ( $word_limit );
+
+        # If that fails or returns much less than we wanted, ignore boundaries
+        $excerpt = substr($source, 0, $length) if (
+                ! defined $excerpt or
+                length($excerpt) < length($source) and
+                        ! length($excerpt) || abs($length - length($excerpt)) > $word_limit
+        );
+
+        return $excerpt . $elipses;
+} #elide()
+
 1;
+__END__
+
+# Rest of the docs {{{1
+
+=head1 THANKS
+
+L</elide> is Copyright 2010, 2002 Matthew Simon Cavalletto.
+Portions copyright 1996, 1997, 1998, 2001 Evolution Online Systems, Inc.
+Licensed under the same terms as Perl itself.
+
+=head1 LICENSE
+
+Copyright (C) 2020 Chris White.  See above for copyright in L</elide>.
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Chris White E<lt>cxwembedded@gmail.comE<gt>
+
+=cut
+
+# }}}1
