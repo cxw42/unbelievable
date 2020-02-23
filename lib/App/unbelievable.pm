@@ -38,6 +38,7 @@ use File::Slurp;
 use File::Spec;
 use JSON;
 use Plack::Builder;
+use Regexp::Common qw(delimited);
 use Syntax::Highlight::Engine::Kate;
 use Syntax::Highlight::Engine::Kate::All;
 use Text::FrontMatter::YAML;
@@ -111,8 +112,7 @@ sub _produce_output {
     _diag(\2, "Got contents:\n$markdown");
 
     # shortcodes.  TODO other than single-arg.
-    $markdown =~ s[\{\{<\s*(?<code>\w+)\s+(?<arg0>\S+)\s*>\}\}]
-                    [ _shortcode($+{code}, [$+{arg0}], $templater) ]exg;
+    _process_shortcodes($fn, $templater, $markdown);
 
     # Fenced, tagged code blocks.
     # TODO in S::K, don't repeat IDs for the line divs (currently each
@@ -237,7 +237,84 @@ sub _sqescape {
     return "'$str'";
 }
 
-# Render a shortcode.  Usage: _shortcode($code, \@args, $templater)
+# Replace shortcodes in the text with their expansions.  Usage:
+#   _process_shortcodes($filename, $templater, $text[, $callback]).
+# Operates in-place on $text.  If $callback is not supplied, _shortcode()
+# is invoked.
+sub _process_shortcodes {
+    # === Regexes ===
+
+    state $RE_opener = qr{
+        \{\{<           # opening delimiter
+        \s*(?<code>\w+) # shortcode name
+        \s*             # (optional to permit '{{<foo>}}'
+    }x;
+
+    state $RE_arg = qr{
+        (?<arg>
+            (?<delimited_arg>$RE{quoted})
+        |   \S+
+        )
+        \s*             # Move forward to the next arg
+    }x;
+
+    state $RE_closer = qr{
+        >\}\}           # closing delimiter
+    }x;
+
+    state $RE_post_opener = qr{
+            (?<closer>$RE_closer)
+        |   (?<opening_delim>\{\{<)     # in case a closing delim gets left off
+        |   (?<eostr>\z)
+        |   (?:$RE_arg)
+    }x;
+
+    # === Function parameters ===
+    my ($filename, $templater) = @_;
+    my $callback = $_[3] // \&_shortcode;
+
+    # === Do the work ===
+
+    CODE: while($_[2] =~ m{$RE_opener}gc) {
+        my $code = $+{code};
+        my $startpos = $-[0];
+        my $endpos;
+        my @args;
+        my $have_closer;
+
+        ARG: while($_[2] =~ m{$RE_post_opener}gc) {
+            if(exists $+{eostr} || exists $+{opening_delim}) {
+                die "Unterminated shortcode $code in $filename starting at char $startpos";
+
+            } elsif(exists $+{arg}) {
+                my $arg = $+{arg};
+                if(exists $+{delimited_arg}) {  # clean up
+                    $arg = substr($arg, 1, length($arg)-2);
+                    $arg =~ s/\\//g;
+                }
+                push @args, $arg;
+                next;
+
+            } elsif(exists $+{closer}) {
+                $have_closer = 1;
+                $endpos = $+[0];    # this will be the end of the closer
+                last;
+
+            } else {
+                die "I can't understand shortcode $code in $filename starting at char $startpos";
+            }
+        } #while in a particular shortcode
+
+        if($have_closer) {
+            my $newtext = $callback->($code, \@args, $templater);
+            substr($_[2], $startpos, $endpos-$startpos+1) = $newtext;
+        } else {
+            die "I can't find what I expected in shortcode $code in $filename starting at char $startpos";
+        }
+    } # while we have shortcodes
+} #_process_shortcodes()
+
+# Render a single shortcode.  Usage: _shortcode($code, \@args, $templater)
 sub _shortcode {
     my ($code, $lrArgs, $templater) = @_;
     _diag(\2, "Shortcode $code @$lrArgs");

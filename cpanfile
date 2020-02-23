@@ -11,6 +11,7 @@ requires 'Plack::Builder';
 requires 'Plack::Middleware::DirIndex';
 requires 'Plack::Runner';
 requires 'Pod::Usage';
+requires 'Regexp::Common', '2016060101';    # warning fixes on $RE{delimited}
 requires 'Syntax::Highlight::Engine::Kate';
 requires 'Test::More';
 requires 'Text::FrontMatter::YAML';
@@ -27,6 +28,7 @@ on configure => sub {
 };
 
 on test => sub {
+    requires 'Data::Dumper';
     requires 'Test::More', '0.98';
 };
 
@@ -35,3 +37,4 @@ on develop => sub {
     requires 'Minilla';
     requires 'Version::Next';
 };
+# vi: set ft=perl: #
