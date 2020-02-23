@@ -254,7 +254,7 @@ sub _process_shortcodes {
     state $RE_arg = qr{
         (?<arg>
             (?<delimited_arg>$RE{quoted})
-        |   \S+
+        |   \w+
         )
         \s*             # Move forward to the next arg
     }x;
@@ -304,7 +304,7 @@ sub _process_shortcodes {
 
             } elsif(exists $+{closer}) {
                 $have_closer = 1;
-                $endpos = $+[0];    # this will be the end of the closer
+                $endpos = $+[0] - 1;    # the last char of the closer
                 last;
 
             } else {

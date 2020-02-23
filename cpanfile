@@ -31,6 +31,7 @@ on configure => sub {
 
 on test => sub {
     requires 'Data::Dumper';
+    requires 'Test::Fatal';
     requires 'Test::More', '0.98';
 };
 
@@ -38,5 +39,8 @@ on develop => sub {
     requires 'CPAN::Uploader';
     requires 'Minilla';
     requires 'Version::Next';
+
+    suggests 'B::Debug';        # used by Devel::Cover; to be removed from core
+    suggests 'Devel::Cover';
 };
 # vi: set ft=perl: #
